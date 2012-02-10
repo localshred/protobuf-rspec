@@ -88,8 +88,14 @@ module Protobuf
 
       # Create a mock service that responds in the way you are expecting to aid in testing client -> service calls.
       # In order to test your success callback you should provide a :response object. Similarly, to test your failure
-      # callback you should provide an :error object. If you would like to test the object that is given as a request
-      # you should provide a :request object.
+      # callback you should provide an :error object. 
+      # 
+      # Asserting the request object can be done one of two ways: direct or explicit. If you would like to directly test
+      # the object that is given as a request you should provide a :request object as part of the cb_mocks third parameter hash. 
+      # Alternatively you can do an explicit assertion by providing a block to mock_remote_service. The block will be yielded with
+      # the request object as its only parameter. This allows you to perform your own assertions on the request object
+      # (e.g. only check a few of the fields in the request). Also note that if a :request param is given in the third param,
+      # the block will be ignored.
       #
       # @example Testing the client on_success callback
       #     # Method under test
@@ -131,7 +137,7 @@ module Protobuf
       #       create_user(request).should eq('error')
       #     end
       #
-      # @example Testing the given client request object
+      # @example Testing the given client request object (direct assert)
       #     # Method under test
       #     def create_user
       #       request = ... # some operation to build a request on state
@@ -148,16 +154,40 @@ module Protobuf
       #       create_user(request)
       #     end
       #     
+      # @example Testing the given client request object (explicit assert)
+      #     # Method under test
+      #     def create_user
+      #       request = ... # some operation to build a request on state
+      #       Proto::UserService.client.create(request) do |c|
+      #         ...
+      #       end
+      #     end
+      #     ...
+      #     
+      #     # spec
+      #     it 'verifies the request is built correctly' do
+      #       mock_remote_service(Proto::UserService, :client) do |given_request|
+      #         given_request.field1.should eq 'rainbows'
+      #         given_request.field2.should eq 'ponies'
+      #       end
+      #       create_user(request)
+      #     end
+      #     
       # @param [Class] klass the service class constant
       # @param [Symbol, String] method a symbol or string denoting the method to call
       # @param [Hash] cb_mocks provides expectation objects to invoke on_success (with :response), on_failure (with :error), and the request object (:request)
+      # @param [Block] assert_block when given, will be invoked with the request message sent to the client method
       # @return [Mock] the stubbed out client mock
-      def mock_remote_service(klass, method, cb_mocks={})
+      def mock_remote_service(klass, method, cb_mocks={}, &assert_block)
         cb_mocks = {:error => mock('error', :message => nil, :code => nil)}.merge(cb_mocks)
         klass.stub(:client).and_return(client = mock('Client'))
         client.stub(method).and_yield(client)
         if cb_mocks[:request]
           client.should_receive(method).with(cb_mocks[:request])
+        elsif block_given?
+          client.should_receive(method) do |given_req|
+            assert_block.call(given_req)
+          end
         else
           client.should_receive(method)
         end
@@ -173,6 +203,7 @@ module Protobuf
         else
           client.stub(:on_failure)
         end
+        
         client
       end
       alias :mock_service :mock_remote_service

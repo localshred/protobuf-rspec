@@ -41,7 +41,9 @@ end
 Mocking Service Responses
 -------------------------
 
-Create a mock service that responds in the way you are expecting to aid in testing client -> service calls. In order to test your success callback you should provide a :response object. Similarly, to test your failure callback you should provide an :error object. If you would like to test the object that is given as a request you should provide a :request object.
+Create a mock service that responds in the way you are expecting to aid in testing client -> service calls. In order to test your success callback you should provide a `:response` object. Similarly, to test your failure callback you should provide an `:error` object. 
+
+Asserting the request object can be done one of two ways: direct or explicit. If you would like to directly test the object that is given as a request you should provide a `:request` object as part of the `cb_mocks` hash (third parameter). Alternatively you can do an explicit assertion by providing a block to `mock_remote_service`. The block will be yielded with the request object as its only parameter. This allows you to perform your own assertions on the request object (e.g. only check a few of the fields in the request). Also note that if a `:request` param is given in the third param, the block will be ignored.
 
 ### Testing the client on_success callback
 ```ruby
@@ -87,7 +89,7 @@ it 'verifies the on_success method behaves correctly' do
 end
 ```
 
-### Testing the given client request object
+### Testing the given client request object (direct assert)
 ```ruby
 # Method under test
 def create_user
@@ -106,7 +108,29 @@ it 'verifies the request is built correctly' do
 end
 ```
 
+### Testing the given client request object (explicit assert)
+```ruby
+# Method under test
+def create_user
+  request = ... # some operation to build a request on state
+  Proto::UserService.client.create(request) do |c|
+    ...
+  end
+end
+...
+
+# spec
+it 'verifies the request is built correctly' do
+  mock_remote_service(Proto::UserService, :client) do |given_request|
+    given_request.field1.should eq 'rainbows'
+    given_request.field2.should eq 'ponies'
+  end
+  create_user(request)
+end
+````
+
 Feedback
+--------
 
 Feedback and comments are welcome:
 
