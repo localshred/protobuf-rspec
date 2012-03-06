@@ -179,7 +179,6 @@ module Protobuf
       # @param [Block] assert_block when given, will be invoked with the request message sent to the client method
       # @return [Mock] the stubbed out client mock
       def mock_remote_service(klass, method, cb_mocks={}, &assert_block)
-        cb_mocks = {:error => mock('error', :message => nil, :code => nil)}.merge(cb_mocks)
         klass.stub(:client).and_return(client = mock('Client'))
         client.stub(method).and_yield(client)
         if cb_mocks[:request]
