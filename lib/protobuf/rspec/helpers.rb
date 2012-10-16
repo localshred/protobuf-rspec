@@ -55,7 +55,7 @@ module Protobuf
       # @param [block] optionally provide a block which will be yielded the service instance just prior to invoking the rpc method.
       # @return [Protobuf::Service] the service instance post-calling the rpc method.
       def call_local_service(klass, method_name, request)
-        request = service.rpcs[method_name].request_type.new(request) if request.is_a?(Hash)
+        request = klass.rpcs[method_name].request_type.new(request) if request.is_a?(Hash)
         service = klass.new(method_name, request.serialize_to_string)
         yield(service) if block_given?
         service.method(method_name).call
