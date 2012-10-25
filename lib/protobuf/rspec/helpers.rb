@@ -221,7 +221,7 @@ module Protobuf
         # @return [Mock] the stubbed out client mock
         def mock_remote_service(klass, method, cb_mocks={}, &assert_block)
           self.class.subject_service { klass }
-          mock_rpc(method, callbacks, &assert_block)
+          mock_rpc(method, cb_mocks, &assert_block)
         end
         alias_method :mock_service, :mock_remote_service
 
@@ -231,8 +231,8 @@ module Protobuf
 
           subject_service.stub(:client).and_return(client)
 
-          if cb_mocks[:request]
-            client.should_receive(method).with(cb_mocks[:request])
+          if callbacks[:request]
+            client.should_receive(method).with(callbacks[:request])
           elsif block_given?
             client.should_receive(method) do |given_req|
               assert_block.call(given_req)
@@ -241,8 +241,8 @@ module Protobuf
             client.should_receive(method)
           end
 
-          client.stub(:on_success).and_yield(cb_mocks[:response]) if cb_mocks[:response]
-          client.stub(:on_failure).and_yield(cb_mocks[:error]) if cb_mocks[:error]
+          client.stub(:on_success).and_yield(callbacks[:response]) if callbacks[:response]
+          client.stub(:on_failure).and_yield(callbacks[:error]) if callbacks[:error]
 
           client
         end
