@@ -223,7 +223,7 @@ module Protobuf
           client = double('Client', :on_success => true, :on_failure => true)
           client.stub(method).and_yield(client)
 
-          subject_service.stub(:client).and_return(client)
+          klass.stub(:client).and_return(client)
 
           if callbacks[:request]
             client.should_receive(method).with(callbacks[:request])
