@@ -133,7 +133,7 @@ module Protobuf
         #
         # Asserting the request object can be done one of two ways: direct or explicit. If you would like to directly test
         # the object that is given as a request you should provide a :request object as part of the cb_mocks third parameter hash.
-        # Alternatively you can do an explicit assertion by providing a block to mock_remote_service. The block will be yielded with
+        # Alternatively you can do an explicit assertion by providing a block to mock_rpc. The block will be yielded with
         # the request object as its only parameter. This allows you to perform your own assertions on the request object
         # (e.g. only check a few of the fields in the request). Also note that if a :request param is given in the third param,
         # the block will be ignored.
@@ -153,7 +153,7 @@ module Protobuf
         #
         #     # spec
         #     it 'verifies the on_success method behaves correctly' do
-        #       mock_remote_service(Proto::UserService, :client, response: mock('response_mock', status: 'success'))
+        #       mock_rpc(Proto::UserService, :client, response: mock('response_mock', status: 'success'))
         #       create_user(request).should eq('success')
         #     end
         #
@@ -173,7 +173,7 @@ module Protobuf
         #
         #     # spec
         #     it 'verifies the on_success method behaves correctly' do
-        #       mock_remote_service(Proto::UserService, :client, error: mock('error_mock', message: 'this is an error message'))
+        #       mock_rpc(Proto::UserService, :client, error: mock('error_mock', message: 'this is an error message'))
         #       ErrorReporter.should_receive(:report).with('this is an error message')
         #       create_user(request).should eq('error')
         #     end
@@ -191,7 +191,7 @@ module Protobuf
         #     # spec
         #     it 'verifies the request is built correctly' do
         #       expected_request = ... # some expectation
-        #       mock_remote_service(Proto::UserService, :client, request: expected_request)
+        #       mock_rpc(Proto::UserService, :client, request: expected_request)
         #       create_user(request)
         #     end
         #
@@ -207,7 +207,7 @@ module Protobuf
         #
         #     # spec
         #     it 'verifies the request is built correctly' do
-        #       mock_remote_service(Proto::UserService, :client) do |given_request|
+        #       mock_rpc(Proto::UserService, :client) do |given_request|
         #         given_request.field1.should eq 'rainbows'
         #         given_request.field2.should eq 'ponies'
         #       end
@@ -216,16 +216,10 @@ module Protobuf
         #
         # @param [Class] klass the service class constant
         # @param [Symbol, String] method a symbol or string denoting the method to call
-        # @param [Hash] cb_mocks provides expectation objects to invoke on_success (with :response), on_failure (with :error), and the request object (:request)
+        # @param [Hash] callbacks provides expectation objects to invoke on_success (with :response), on_failure (with :error), and the request object (:request)
         # @param [Block] assert_block when given, will be invoked with the request message sent to the client method
         # @return [Mock] the stubbed out client mock
-        def mock_remote_service(klass, method, cb_mocks={}, &assert_block)
-          self.class.subject_service { klass }
-          mock_rpc(method, cb_mocks, &assert_block)
-        end
-        alias_method :mock_service, :mock_remote_service
-
-        def mock_rpc(method, callbacks = {}, &assert_block)
+        def mock_rpc(klass, method, callbacks={}, &assert_block)
           client = double('Client', :on_success => true, :on_failure => true)
           client.stub(method).and_yield(client)
 
@@ -246,6 +240,8 @@ module Protobuf
 
           client
         end
+        alias_method :mock_service, :mock_rpc
+        alias_method :mock_remote_service, :mock_rpc
 
       end
 
