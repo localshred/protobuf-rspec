@@ -1,13 +1,4 @@
-require 'rspec/core'
 require 'protobuf/rpc/rpc.pb'
-
-::RSpec.configure do |config|
-  config.add_setting :protobuf_raw_response, :default => false
-
-  def config.protobuf_raw_responses
-    self.protobuf_raw_response = true
-  end
-end
 
 # RSpec Helpers designed to give you mock abstraction of client or service layer.
 # Require as protobuf/rspec/helpers and include into your running RSpec configuration.
@@ -29,20 +20,6 @@ module Protobuf
       end
 
       module ClassMethods
-
-        def metadata_for_protobuf_rspec
-          metadata[:protobuf_rspec] = metadata[:protobuf_rspec] ? metadata[:protobuf_rspec].dup : {}
-        end
-
-        def protobuf_raw_responses(true_or_false = true)
-          metadata_for_protobuf_rspec[:protobuf_raw_response] = true_or_false
-        end
-
-        def protobuf_raw_responses?
-          metadata_for_protobuf_rspec.fetch(:protobuf_raw_response) do 
-            ::RSpec.configuration.protobuf_raw_response?
-          end
-        end
 
         # Set the service subject. Use this method when the described_class is
         # not the class you wish to use with methods like local_rpc. In t
@@ -75,10 +52,6 @@ module Protobuf
       end
 
       module InstanceMethods
-
-        def protobuf_raw_responses?
-          self.class.protobuf_raw_responses?
-        end
 
         def subject_service
           self.class.subject_service
@@ -123,43 +96,21 @@ module Protobuf
         #
         # @param [Symbol, String] method a symbol or string denoting the method to call.
         # @param [Protobuf::Message or Hash] request the request message of the expected type for the given method.
-        # @param [block] optionally provide a block which will be yielded the service instance just prior to invoking the rpc method.
-        # @return [Protobuf::Service] the service instance post-calling the rpc method.
-        def local_rpc(rpc_method, request, raw_response = false)
+        # @return [Protobuf::Message or String] the resulting protobuf message or error string
+        def local_rpc(rpc_method, request)
           request = subject_service.rpcs[rpc_method].request_type.new(request) if request.is_a?(Hash)
 
-          if raw_response || protobuf_raw_responses? || request.serialize_to_string.empty?
-            service = subject_service.new(rpc_method, request.serialize_to_string)
-
-            yield(service) if block_given?
-
-            service.__send__(rpc_method)
-            return service
-          else
-            return __dispatch_service_call__(rpc_method, request)
-          end
-        end
-
-        def __dispatch_service_call__(rpc_method, request)
-          request_params = { 
+          outer_request_params = { 
             :service_name => subject_service.to_s, 
             :method_name => rpc_method.to_s, 
             :request_proto => request.serialize_to_string
           }
 
-          rpc_request = ::Protobuf::Socketrpc::Request.new(request_params)
-          dispatcher = ::Protobuf::Rpc::ServiceDispatcher.new(rpc_request)
+          outer_request = ::Protobuf::Socketrpc::Request.new(outer_request_params)
+          dispatcher = ::Protobuf::Rpc::ServiceDispatcher.new(outer_request)
+
           dispatcher.invoke!
         end
-
-        # Provides backwards compatability to bridge to the new local_rpc usage.
-        #
-        def call_local_service(klass, rpc_method, request, &block)
-          $stderr.puts '[Deprecated] call_local_service is deprecated. Please use local_rpc in conjunction with subject_service.'
-          self.class.service { klass }
-          local_rpc(rpc_method, request, nil &block)
-        end
-        alias_method :call_service, :call_local_service
 
         # Create a mock service that responds in the way you are expecting to aid in testing client -> service calls.
         # In order to test your success callback you should provide a :response object. Similarly, to test your failure
