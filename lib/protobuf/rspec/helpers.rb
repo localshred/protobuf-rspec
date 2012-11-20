@@ -235,7 +235,7 @@ module Protobuf
         #     request_class(:create) # => UserRequest
         #
         def request_class(endpoint)
-          described_class.rpcs[endpoint].request_type
+          subject_service.rpcs[endpoint].request_type
         end
 
         # Returns the response class for a given endpoint of the described class
@@ -245,7 +245,7 @@ module Protobuf
         #     response_class(:create) # => UserResponse
         #
         def response_class(endpoint)
-          described_class.rpcs[endpoint].response_type
+          subject_service.rpcs[endpoint].response_type
         end
       end
     end
