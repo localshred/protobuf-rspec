@@ -204,26 +204,30 @@ module Protobuf
         # @param [Class] klass the service class constant
         # @param [Symbol, String] method a symbol or string denoting the method to call
         # @param [Hash] callbacks provides expectation objects to invoke on_success (with :response), on_failure (with :error), and the request object (:request)
-        # @param [Block] assert_block when given, will be invoked with the request message sent to the client method
+        # @param [Block] optional. When given, will be invoked with the request message sent to the client method
         # @return [Mock] the stubbed out client mock
-        def mock_rpc(klass, method, callbacks={}, &assert_block)
+        def mock_rpc(klass, method, callbacks = {})
           client = double('Client', :on_success => true, :on_failure => true)
           client.stub(method).and_yield(client)
 
           klass.stub(:client).and_return(client)
 
-          if callbacks[:request]
+          case
+          when callbacks[:request] then
             client.should_receive(method).with(callbacks[:request])
-          elsif block_given?
+          when block_given? then
             client.should_receive(method) do |given_req|
-              assert_block.call(given_req)
+              yield(given_req)
             end
           else
             client.should_receive(method)
           end
 
-          client.stub(:on_success).and_yield(callbacks[:response]) if callbacks[:response]
-          client.stub(:on_failure).and_yield(callbacks[:error]) if callbacks[:error]
+          success = callbacks[:success] || callbacks[:response]
+          client.stub(:on_success).and_yield(success) unless success.nil?
+
+          failure = callbacks[:failure] || callbacks[:error]
+          client.stub(:on_failure).and_yield(failure) unless failure.nil?
 
           client
         end
