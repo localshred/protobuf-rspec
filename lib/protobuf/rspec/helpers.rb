@@ -122,10 +122,6 @@ module Protobuf
           request_klass = request_class(rpc_method)
           request = request_klass.new(request) if request.is_a?(Hash)
 
-          if request_klass != request.class
-            raise "Invalid request object. Expected class #{request_klass}, got #{request.class}"
-          end
-
           outer_request_params = { :service_name => subject_service.to_s,
                                    :method_name => rpc_method.to_s,
                                    :request_proto => request.serialize_to_string }
