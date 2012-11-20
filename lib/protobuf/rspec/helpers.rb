@@ -98,13 +98,16 @@ module Protobuf
         # @param [Protobuf::Message or Hash] request the request message of the expected type for the given method.
         # @return [Protobuf::Message or String] the resulting protobuf message or error string
         def local_rpc(rpc_method, request)
-          request = subject_service.rpcs[rpc_method].request_type.new(request) if request.is_a?(Hash)
+          request_klass = request_class(rpc_method)
+          request = request_klass.new(request) if request.is_a?(Hash)
 
-          outer_request_params = {
-            :service_name => subject_service.to_s,
-            :method_name => rpc_method.to_s,
-            :request_proto => request.serialize_to_string
-          }
+          if request_klass != request.class
+            raise "Invalid request object. Expected class #{request_klass}, got #{request.class}"
+          end
+
+          outer_request_params = { :service_name => subject_service.to_s,
+                                   :method_name => rpc_method.to_s,
+                                   :request_proto => request.serialize_to_string }
 
           outer_request = ::Protobuf::Socketrpc::Request.new(outer_request_params)
           dispatcher = ::Protobuf::Rpc::ServiceDispatcher.new(outer_request)
