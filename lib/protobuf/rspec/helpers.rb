@@ -22,7 +22,8 @@ module Protobuf
       module ClassMethods
 
         # Set the service subject. Use this method when the described_class is
-        # not the class you wish to use with methods like local_rpc. In t
+        # not the class you wish to use with methods like local_rpc,
+        # request_class, or response_class.
         #
         # @example Override subject service for local_rpc calls
         #     describe Foo::BarService do
@@ -33,13 +34,6 @@ module Protobuf
         #       its('response.records') { should have(3).items }
         #     end
         #
-        # @example Override subject service for remote_rpc mocks
-        #     describe BarController do
-        #       describe '#index' do
-        #         subject_service { Foo::BarService }
-        #         subject { remote_rpc(:find, request, response) }
-        #       end
-        #     end
         #
         def subject_service
           if block_given?
@@ -62,34 +56,61 @@ module Protobuf
         #
         # @example Test a local service method
         #     # Implementation
-        #     module Proto
+        #     module Services
         #       class UserService < Protobuf::Rpc::Service
         #         def create
-        #           user = User.create_from_proto(request)
         #           if request.name
-        #             respond_with(ProtoRepresenter.new(user))
+        #             user = User.create_from_proto(request)
+        #             respond_with(user)
         #           else
         #             rpc_failed 'Error: name required'
+        #           end
+        #         end
+        #
+        #         def notify
+        #           user = User.find_by_guid(request.guid)
+        #           if user
+        #             Resque.enqueue(EmailUserJob, user.id)
+        #             respond_with(:queued => true)
+        #           else
+        #             rpc_failed 'Error: user not found'
         #           end
         #         end
         #       end
         #     end
         #
         #     # Spec
-        #     describe Proto::UserService do
+        #     describe Services::UserService do
         #       describe '#create' do
-        #         it 'creates a new user' do
-        #           create_request = Proto::UserCreate.new(...)
-        #           service = call_local_service(Proto::UserService, :create, create_request)
-        #           service.response.should eq(some_response_object)
+        #         subject { local_rpc(:create, request) }
+        #
+        #         context 'when request is valid' do
+        #           let(:request) { { :name => 'Jack' } }
+        #           let(:user_mock) { FactoryGirl.build(:user) }
+        #           before { User.should_receive(:create_from_proto).and_return(user_mock) }
+        #           it { should eq(user_mock) }
         #         end
         #
-        #         it 'fails when name is not given' do
-        #           bad_req = { :name => nil }
-        #           service = call_local_service(Proto::UserService, :create, :create_request) do |service|
-        #             # Block is yielded before the method is invoked.
-        #             service.should_receive(:rpc_failed).with('Error: name required')
-        #           end
+        #         context 'when name is not given' do
+        #           let(:request) { :name => '' }
+        #           it { should =~ /Error/ }
+        #         end
+        #       end
+        #
+        #       describe '#notify' do
+        #         let(:request) { { :guid => 'USR-123' } }
+        #         let(:user_mock) { FactoryGirl.build(:user) }
+        #         subject { local_rpc(:notify, request) }
+        #
+        #         context 'when user is found' do
+        #           before { User.should_receive(:find_by_guid).with(request.guid).and_return(user_mock) }
+        #           before { Resqueue.should_receive(:enqueue).with(EmailUserJob, request.guid)
+        #           its(:queued) { should be_true }
+        #         end
+        #
+        #         context 'when user is not found' do
+        #           before { Resque.should_not_receive(:enqueue) }
+        #           it { should =~ /Error/ }
         #         end
         #       end
         #     end
@@ -143,7 +164,8 @@ module Protobuf
         #
         #     # spec
         #     it 'verifies the on_success method behaves correctly' do
-        #       mock_rpc(Proto::UserService, :client, response: mock('response_mock', status: 'success'))
+        #       response_mock = mock('response_mock', :status => 'success')
+        #       mock_rpc(Proto::UserService, :client, :response => response_mock)
         #       create_user(request).should eq('success')
         #     end
         #
@@ -163,8 +185,9 @@ module Protobuf
         #
         #     # spec
         #     it 'verifies the on_success method behaves correctly' do
-        #       mock_rpc(Proto::UserService, :client, error: mock('error_mock', message: 'this is an error message'))
-        #       ErrorReporter.should_receive(:report).with('this is an error message')
+        #       error_mock = mock('error_mock', :message => 'this is an error message')
+        #       mock_rpc(Proto::UserService, :client, :error => error_mock)
+        #       ErrorReporter.should_receive(:report).with(error_mock.message)
         #       create_user(request).should eq('error')
         #     end
         #
@@ -181,11 +204,11 @@ module Protobuf
         #     # spec
         #     it 'verifies the request is built correctly' do
         #       expected_request = ... # some expectation
-        #       mock_rpc(Proto::UserService, :client, request: expected_request)
+        #       mock_rpc(Proto::UserService, :client, :request => expected_request)
         #       create_user(request)
         #     end
         #
-        # @example Testing the given client request object (explicit assert)
+        # @example Testing the given client request object (block assert)
         #     # Method under test
         #     def create_user
         #       request = ... # some operation to build a request on state

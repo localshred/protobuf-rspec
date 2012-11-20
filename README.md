@@ -1,51 +1,128 @@
 protobuf-rspec gem
 ==================
 
-RSpec Helpers designed to give you mock abstraction of client or service layer. Require as protobuf/rspec/helpers and include into your running RSpec configuration.
+RSpec Helpers designed to give you mock abstraction of client or service layer. Require as `protobuf/rspec` and include into your running RSpec configuration.
 
-**Note:** Tested to work with the [protobuf gem](https://rubygems.org/gems/protobuf) (>= 1.0).
+```ruby
+# spec_helper.rb
+# ...
 
-Mocking Client Requests (Outside-In test of the service methods)
-----------------------------------------------------------------
+require 'protobuf/rspec'
+RSpec.configure do |config|
+  config.include Protobuf::RSpec::Helpers
+end
+```
 
-Use this method to call a local service in your application to test responses and behavior based on the given request. This should be used to outside-in test a local RPC Service without testing the underlying socket implementation or needing actual client code to invoke the method(s) under test.
+**Note:** Tested to work with the [protobuf gem](https://rubygems.org/gems/protobuf) (>= 2.x).
+
+Unit-Testing Service Behavior
+-----------------------------
+
+### `local_rpc`
+
+To unit test your service you should use the `local_rpc` helper method. `local_rpc` helps you call the service instance method of your choosing to ensure that the correct responses are generated with the given requests. This should be used to outside-in test a local RPC Service without testing the underlying socket implementation or needing actual client code to invoke the endpoint method under test.
 
 Given the service implementation below:
 
 ```ruby
-module Proto
+module Services
   class UserService < Protobuf::Rpc::Service
     def create
-      user = User.create_from_proto(request)
-      self.response = ProtoRepresenter.new(user).to_proto
+      if request.name
+        user = User.create_from_proto(request)
+        respond_with(user)
+      else
+        rpc_failed 'Error: name required'
+      end
+    end
+
+    def notify
+      user = User.find_by_guid(request.guid)
+      if user
+        Resque.enqueue(EmailUserJob, user.id)
+        respond_with(:queued => true)
+      else
+        rpc_failed 'Error: user not found'
+      end
     end
   end
 end
 ```
 
-This could be one way to test the implementation while ignoring the RPC backend:
-
+Specs that test these two methods and their various cases could look something like this:
 
 ```ruby
-describe Proto::UserService do
+describe Services::UserService do
   describe '#create' do
-    it 'creates a new user' do
-      create_request = Proto::UserCreate.new(...)
-      client = call_local_service(Proto::UserService, :create, create_request)
-      client.response.should eq(some_response_object)
+    subject { local_rpc(:create, request) }
+
+    context 'when request is valid' do
+      let(:request) { { :name => 'Jack' } }
+      let(:user_mock) { FactoryGirl.build(:user) }
+      before { User.should_receive(:create_from_proto).and_return(user_mock) }
+      it { should eq(user_mock) }
+    end
+
+    context 'when name is not given' do
+      let(:request) { :name => '' }
+      it { should =~ /Error/ }
+    end
+  end
+
+  describe '#notify' do
+    let(:request) { { :guid => 'USR-123' } }
+    let(:user_mock) { FactoryGirl.build(:user) }
+    subject { local_rpc(:notify, request) }
+
+    context 'when user is found' do
+      before { User.should_receive(:find_by_guid).with(request.guid).and_return(user_mock) }
+      before { Resqueue.should_receive(:enqueue).with(EmailUserJob, request.guid)
+      its(:queued) { should be_true }
+    end
+
+    context 'when user is not found' do
+      before { Resque.should_not_receive(:enqueue) }
+      it { should =~ /Error/ }
     end
   end
 end
 ```
 
+### `subject_service`
+
+One thing to note is that `local_rpc` uses `described_class` as the class to invoke for the given method. If you need to instead test a different class than your `described_class`, simply pass a block to `subject_service` which returns the class you would like to use instead.
+
+```ruby
+describe 'The User Service' do
+  subject_service { Services::UserService }
+
+  describe '#create' do
+    subject { local_rpc(:create, request) }
+    # ...
+  end
+
+  #...
+end
+```
+
+### `request_class` and `response_class`
+
+Both the `request_class` and `response_class` helper methods will return the class type for, you guessed it, the request and response type defined by the service method. This can aid in setting up the correct objects for expectations. Simply pass in the name of the endpoint you are testing to get the appropriate message class.
+
+```ruby
+request_class(:create) # => UserCreateRequest
+response_class(:create) # => User
+```
 Mocking Service Responses
 -------------------------
 
-Create a mock service that responds in the way you are expecting to aid in testing client -> service calls. In order to test your success callback you should provide a `:response` object. Similarly, to test your failure callback you should provide an `:error` object. 
+Create a mock service that responds in the way you are expecting to aid in testing client -> service calls. In order to test your success callback you should provide a `:success` option. To test your failure callback you should provide a `:failure` option.
 
-Asserting the request object can be done one of two ways: direct or explicit. If you would like to directly test the object that is given as a request you should provide a `:request` object as part of the `cb_mocks` hash (third parameter). Alternatively you can do an explicit assertion by providing a block to `mock_remote_service`. The block will be yielded with the request object as its only parameter. This allows you to perform your own assertions on the request object (e.g. only check a few of the fields in the request). Also note that if a `:request` param is given in the third param, the block will be ignored.
 
-### Testing the client on_success callback
+### Testing the client `on_success` callback
+
+Passing a `:success` key as an option to `mock_rpc` will cause the `on_success` callback to be invoked with the given object. In this way you can simulate a successful service response to verify that you are handling the response appropriately. You can alternatively use the `:response` key to invoke the `on_success` block.
+
 ```ruby
   # Method under test
   def create_user(request)
@@ -58,15 +135,19 @@ Asserting the request object can be done one of two ways: direct or explicit. If
     status
   end
   ...
-  
+
   # spec
   it 'verifies the on_success method behaves correctly' do
-    mock_remote_service(Proto::UserService, :client, response: mock('response_mock', status: 'success'))
+    response_mock = mock('response_mock', :status => 'success')
+    mock_rpc(Proto::UserService, :client, :success => response_mock) # alternatively can use :response key here
     create_user(request).should eq('success')
   end
 ```
 
-### Testing the client on_failure callback
+### Testing the client `on_failure` callback
+
+Passing a `:failure` key as an option to `mock_rpc` will cause the `on_failure` callback to be invoked with the given object. In this way you can simulate a service failure and verify you are handling that failure appropriately. You can alternatively use the `:error` key to invoke the `on_failure` block.
+
 ```ruby
 # Method under test
 def create_user(request)
@@ -83,13 +164,17 @@ end
 
 # spec
 it 'verifies the on_success method behaves correctly' do
-  mock_remote_service(Proto::UserService, :client, error: mock('error_mock', message: 'this is an error message'))
-  ErrorReporter.should_receive(:report).with('this is an error message')
+  error_mock = mock('error_mock', :message => 'this is an error message')
+  mock_rpc(Proto::UserService, :client, :failure => error_mock) # alternatively can use :error key here
+  ErrorReporter.should_receive(:report).with(error_mock.message)
   create_user(request).should eq('error')
 end
 ```
 
 ### Testing the given client request object (direct assert)
+
+In order to test the request object sent to the service you can pass a `:request` key whose value will be asserted with RSpec's `with` constraint paired with the `should_receive` assertion. Also note that if a `:request` option is given, the assert block will be ignored (see below).
+
 ```ruby
 # Method under test
 def create_user
@@ -103,12 +188,15 @@ end
 # spec
 it 'verifies the request is built correctly' do
   expected_request = ... # some expectation
-  mock_remote_service(Proto::UserService, :client, request: expected_request)
+  mock_rpc(Proto::UserService, :client, :request => expected_request)
   create_user(request)
 end
 ```
 
-### Testing the given client request object (explicit assert)
+### Testing the given client request object (block assert)
+
+You can also pass a block to `mock_rpc` which will be yielded the request object. This allows more fine-grained assertions on the request object. Also note that if a `:request` option is given (see above), the assert block will be ignored.
+
 ```ruby
 # Method under test
 def create_user
@@ -121,7 +209,7 @@ end
 
 # spec
 it 'verifies the request is built correctly' do
-  mock_remote_service(Proto::UserService, :client) do |given_request|
+  mock_rpc(Proto::UserService, :client) do |given_request|
     given_request.field1.should eq 'rainbows'
     given_request.field2.should eq 'ponies'
   end
@@ -134,6 +222,5 @@ Feedback
 
 Feedback and comments are welcome:
 
-Web: [rand9.com](http://rand9.com)
 Twitter: [@localshred](https://twitter.com/localshred)
 Github: [github](https://github.com/localshred)
