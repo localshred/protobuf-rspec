@@ -109,6 +109,8 @@ module Protobuf
           outer_request = ::Protobuf::Socketrpc::Request.new(outer_request_params)
           dispatcher = ::Protobuf::Rpc::ServiceDispatcher.new(outer_request)
 
+          yield(dispatcher.service) if block_given?
+
           dispatcher.invoke!
         end
 
