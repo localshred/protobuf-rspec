@@ -100,9 +100,9 @@ module Protobuf
         def local_rpc(rpc_method, request)
           request = subject_service.rpcs[rpc_method].request_type.new(request) if request.is_a?(Hash)
 
-          outer_request_params = { 
-            :service_name => subject_service.to_s, 
-            :method_name => rpc_method.to_s, 
+          outer_request_params = {
+            :service_name => subject_service.to_s,
+            :method_name => rpc_method.to_s,
             :request_proto => request.serialize_to_string
           }
 
@@ -228,8 +228,26 @@ module Protobuf
         alias_method :mock_service, :mock_rpc
         alias_method :mock_remote_service, :mock_rpc
 
-      end
+        # Returns the request class for a given endpoint of the described class
+        #
+        # @example
+        #     # With a create endpoint that takes a UserRequest object:
+        #     request_class(:create) # => UserRequest
+        #
+        def request_class(endpoint)
+          described_class.rpcs[endpoint].request_type
+        end
 
+        # Returns the response class for a given endpoint of the described class
+        #
+        # @example
+        #     # With a create endpoint that takes a UserResponse object:
+        #     response_class(:create) # => UserResponse
+        #
+        def response_class(endpoint)
+          described_class.rpcs[endpoint].response_type
+        end
+      end
     end
   end
 end
