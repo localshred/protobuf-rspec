@@ -1,4 +1,4 @@
-require 'protobuf/rpc/rpc.pb'
+require 'protobuf/rpc/server'
 
 # RSpec Helpers designed to give you mock abstraction of client or service layer.
 # Require as protobuf/rspec/helpers and include into your running RSpec configuration.
@@ -8,6 +8,7 @@ require 'protobuf/rpc/rpc.pb'
 #     RSpec.configure do |config|
 #       config.include Protobuf::Rspec::Helpers
 #     end
+#
 module Protobuf
   module RSpec
     module Helpers
@@ -34,7 +35,6 @@ module Protobuf
         #       its('response.records') { should have(3).items }
         #     end
         #
-        #
         def subject_service
           if block_given?
             @_subject_service = yield
@@ -51,8 +51,8 @@ module Protobuf
           self.class.subject_service
         end
 
-        # Call a local service to test responses and behavior based on the given request.
-        # Should use to outside-in test a local RPC Service without testing the underlying socket implementation.
+        # Call a local RPC service to test responses and behavior based on the
+        # given request (without testing the underlying socket implementation).
         #
         # @example Test a local service method
         #     # Implementation
@@ -118,21 +118,79 @@ module Protobuf
         # @param [Symbol, String] method a symbol or string denoting the method to call.
         # @param [Protobuf::Message or Hash] request the request message of the expected type for the given method.
         # @return [Protobuf::Message or String] the resulting protobuf message or error string
+        #
         def local_rpc(rpc_method, request)
-          request_klass = request_class(rpc_method)
-          request = request_klass.new(request) if request.is_a?(Hash)
+          env = rpc_env(rpc_method, request)
+          service = subject_service.new(env)
 
-          outer_request_params = { :service_name => subject_service.to_s,
-                                   :method_name => rpc_method.to_s,
-                                   :request_proto => request.serialize_to_string }
+          yield(service) if block_given?
 
-          outer_request = ::Protobuf::Socketrpc::Request.new(outer_request_params)
-          dispatcher = ::Protobuf::Rpc::ServiceDispatcher.new(outer_request)
-
-          yield(dispatcher.service) if block_given?
-
-          dispatcher.invoke!
+          # Dispatch the RPC method invoking all of the filters
+          service.callable_rpc_method(rpc_method).call
+          service.response
         end
+
+        # Make an RPC call invoking the entire middleware stack (without testing
+        # the underlying socket implementation). Works the same as `local_rpc`, but
+        # invokes the entire RPC middleware stack.
+        #
+        # @example Test an RPC method
+        #
+        #     it "returns a user" do
+        #       response = rpc(:find, request)
+        #       response.should eq user
+        #     end
+        #
+        # @param [Symbol, String] method a symbol or string denoting the method to call.
+        # @param [Protobuf::Message or Hash] request the request message of the expected type for the given method.
+        # @return [Protobuf::Message or Protobuf::Rpc::PbError] the resulting Protobuf message or RPC error.
+        #
+        def rpc(rpc_method, request)
+          request_wrapper = wrapped_request(rpc_method, request)
+
+          env = ::Protobuf::Rpc::Env.new('encoded_request' => request_wrapper.encode)
+          env = ::Protobuf::Rpc.middleware.call(env)
+
+          env.response
+        end
+
+        # Initialize a new RPC env object simulating what happens in the middleware stack.
+        # Useful for testing a service class directly without using `rpc` or `local_rpc`.
+        #
+        # @example Test an RPC method on the service directly
+        #
+        #     describe "#create" do
+        #       # Initialize request and response
+        #       # ...
+        #       let(:env) { rpc_env(:create, request) }
+        #
+        #       subject { described_class.new(env) }
+        #
+        #       it "creates a user" do
+        #         subject.create
+        #         subject.response.should eq response
+        #       end
+        #     end
+        #
+        # @param [Symbol, String] method a symbol or string denoting the method to call.
+        # @param [Protobuf::Message or Hash] request the request message of the expected type for the given method.
+        # @return [Protobuf::Rpc::Env] the environment derived from an RPC request.
+        #
+        def rpc_env(rpc_method, request)
+          request = request_class(rpc_method).new(request) if request.is_a?(Hash)
+
+          ::Protobuf::Rpc::Env.new(
+            'caller'          => 'protobuf-rspec',
+            'service_name'    => subject_service.to_s,
+            'method_name'     => rpc_method.to_s,
+            'request'         => request,
+            'request_type'    => request_class(rpc_method),
+            'response_type'   => response_class(rpc_method),
+            'rpc_method'      => subject_service.rpcs[rpc_method],
+            'rpc_service'     => subject_service
+          )
+        end
+        alias_method :env_for_request, :rpc_env
 
         # Create a mock service that responds in the way you are expecting to aid in testing client -> service calls.
         # In order to test your success callback you should provide a :response object. Similarly, to test your failure
@@ -228,6 +286,7 @@ module Protobuf
         # @param [Hash] callbacks provides expectation objects to invoke on_success (with :response), on_failure (with :error), and the request object (:request)
         # @param [Block] optional. When given, will be invoked with the request message sent to the client method
         # @return [Mock] the stubbed out client mock
+        #
         def mock_rpc(klass, method, callbacks = {})
           client = double('Client', :on_success => true, :on_failure => true)
           client.stub(method).and_yield(client)
@@ -274,6 +333,24 @@ module Protobuf
         #
         def response_class(endpoint)
           subject_service.rpcs[endpoint].response_type
+        end
+
+        # Returns the request wrapper that is encoded and sent over the wire when calling
+        # an RPC method with the given request
+        #
+        # @param [Symbol, String] method a symbol or string denoting the method to call.
+        # @param [Protobuf::Message or Hash] request the request message of the expected type for the given method.
+        # @return [Protobuf::Socketrpc::Request] the wrapper used to transmit RPC requests.
+        #
+        def wrapped_request(rpc_method, request)
+          request = request_class(rpc_method).new(request) if request.is_a?(Hash)
+
+          ::Protobuf::Socketrpc::Request.new(
+            :service_name => subject_service.to_s,
+            :method_name => rpc_method.to_s,
+            :request_proto => request.encode,
+            :caller => 'protobuf-rspec'
+          )
         end
       end
     end
