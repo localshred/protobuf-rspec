@@ -20,7 +20,7 @@ Unit-Testing Service Behavior
 
 ### `local_rpc`
 
-To unit test your service you should use the `local_rpc` helper method. `local_rpc` helps you call the service instance method of your choosing to ensure that the correct responses are generated with the given requests. This should be used to outside-in test a local RPC Service without testing the underlying socket implementation or needing actual client code to invoke the endpoint method under test.
+To unit test your service you should use the `local_rpc` helper method. `local_rpc` helps you call the service instance method of your choosing to ensure that the correct responses are generated with the given requests. This should be used to outside-in test a local RPC Service without testing the underlying socket implementation or needing actual client code to invoke the endpoint method under test. Any filters added to the service **will** be invoked.
 
 Given the service implementation below:
 
@@ -84,6 +84,34 @@ describe Services::UserService do
       before { Resque.should_not_receive(:enqueue) }
       it { should =~ /Error/ }
     end
+  end
+end
+```
+
+### `rpc`
+
+Make an RPC call (without testing the underlying socket implementation). Works the same as `local_rpc`, but invokes the entire RPC middleware stack (service filters are also run):
+
+```Ruby
+rpc(:create, user_request) # => UserService#create
+```
+
+### `rpc_env`
+
+Initialize a new RPC env object simulating what happens in the middleware stack.
+Useful for testing a service class directly without using `rpc` or `local_rpc`.
+
+```Ruby
+describe "#create" do
+  # Initialize request and response
+  # ...
+  let(:env) { rpc_env(:create, request) }
+
+  subject { described_class.new(env) }
+
+  it "creates a user" do
+    subject.create
+    subject.response.should eq response
   end
 end
 ```
