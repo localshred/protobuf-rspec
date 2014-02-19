@@ -1,7 +1,9 @@
 protobuf-rspec gem
 ==================
 
-RSpec Helpers designed to give you mock abstraction of client or service layer. Require as `protobuf/rspec` and include into your running RSpec configuration.
+Provides spec helpers for testing client and server [protobuf](https://github.com/localshred/protobuf) code.
+
+RSpec Helpers are designed to give you mock abstraction of client or service layer. Require as `protobuf/rspec` and include into your running RSpec configuration.
 
 ```ruby
 # spec_helper.rb
@@ -12,8 +14,6 @@ RSpec.configure do |config|
   config.include Protobuf::RSpec::Helpers
 end
 ```
-
-**Note:** Tested to work with the [protobuf gem](https://rubygems.org/gems/protobuf) (>= 2.x).
 
 Unit-Testing Service Behavior
 -----------------------------
