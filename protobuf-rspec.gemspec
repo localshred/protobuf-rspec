@@ -5,8 +5,8 @@ require "protobuf/rspec/version"
 Gem::Specification.new do |s|
   s.name        = "protobuf-rspec"
   s.version     = Protobuf::RSpec::VERSION
-  s.authors     = ["BJ Neilsen"]
-  s.email       = ["bj.neilsen@gmail.com"]
+  s.authors     = ["BJ Neilsen", "Adam Hutchison"]
+  s.email       = ["bj.neilsen@gmail.com", "liveh2o@gmail.com"]
   s.homepage    = "http://github.com/localshred/protobuf-rspec"
   s.summary     = %q{Protobuf RSpec helpers for testing services and clients. Meant to be used with the protobuf gem. Decouple external services/clients from each other using the given helper methods.}
   s.description = s.summary
