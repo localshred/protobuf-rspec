@@ -19,7 +19,7 @@ Gem::Specification.new do |s|
   s.require_paths = ["lib"]
 
   s.add_runtime_dependency "protobuf", ">= 3.0.0"
-  s.add_runtime_dependency "rspec", "~> 2.8"
+  s.add_runtime_dependency "rspec", "~> 3.0"
 
   s.add_development_dependency "rake"
   s.add_development_dependency "yard", "~> 0.7"
