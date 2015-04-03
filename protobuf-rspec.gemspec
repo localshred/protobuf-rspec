@@ -22,6 +22,4 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency "rspec", "~> 3.0"
 
   s.add_development_dependency "rake"
-  s.add_development_dependency "yard", "~> 0.7"
-  s.add_development_dependency "redcarpet", "~> 2.1"
 end
