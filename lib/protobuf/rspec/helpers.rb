@@ -289,9 +289,9 @@ module Protobuf
         #
         def mock_rpc(klass, method, callbacks = {})
           client = double('Client', :on_success => true, :on_failure => true)
-          client.stub(method).and_yield(client)
+          allow(client).to receive(method).and_yield(client)
 
-          klass.stub(:client).and_return(client)
+          allow(klass).to receive(:client).and_return(client)
 
           case
           when callbacks[:request] then
@@ -305,10 +305,10 @@ module Protobuf
           end
 
           success = callbacks[:success] || callbacks[:response]
-          client.stub(:on_success).and_yield(success) unless success.nil?
+          allow(client).to receive(:on_success).and_yield(success) unless success.nil?
 
           failure = callbacks[:failure] || callbacks[:error]
-          client.stub(:on_failure).and_yield(failure) unless failure.nil?
+          allow(client).to receive(:on_failure).and_yield(failure) unless failure.nil?
 
           client
         end
