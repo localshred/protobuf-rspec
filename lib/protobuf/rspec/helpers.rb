@@ -295,13 +295,13 @@ module Protobuf
 
           case
           when callbacks[:request] then
-            client.should_receive(method).with(callbacks[:request])
+            expect(client).to receive(method).with(callbacks[:request])
           when block_given? then
-            client.should_receive(method) do |given_req|
+            expect(client).to receive(method) do |given_req|
               yield(given_req)
             end
           else
-            client.should_receive(method)
+            expect(client).to receive(method)
           end
 
           success = callbacks[:success] || callbacks[:response]
