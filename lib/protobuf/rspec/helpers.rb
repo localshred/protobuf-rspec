@@ -126,7 +126,11 @@ module Protobuf
           yield(service) if block_given?
 
           # Dispatch the RPC method invoking all of the filters
-          service.callable_rpc_method(rpc_method).call
+          if service.respond_to?(:callable_rpc_method)
+            service.callable_rpc_method(rpc_method).call
+          else
+            service.call(rpc_method)
+          end
           service.response
         end
 
