@@ -10,6 +10,7 @@ Gem::Specification.new do |s|
   s.homepage    = "http://github.com/localshred/protobuf-rspec"
   s.summary     = %q{Protobuf RSpec helpers for testing services and clients. Meant to be used with the protobuf gem. Decouple external services/clients from each other using the given helper methods.}
   s.description = s.summary
+  s.license     = "MIT"
 
   s.rubyforge_project = "protobuf-rspec"
 
